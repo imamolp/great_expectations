@@ -30,10 +30,10 @@ datasource_config = {
 # In normal usage you'd set your path directly in the yaml above.
 datasource_config["data_connectors"]["default_inferred_data_connector_name"][
     "bucket"
-] = "superconductive-public"
+] = "superconductive-docs-test"
 datasource_config["data_connectors"]["default_inferred_data_connector_name"][
     "prefix"
-] = "data/taxi_yellow_trip_data_samples/"
+] = "taxi_yellow_trip_data_samples/"
 
 context.test_yaml_config(yaml.dump(datasource_config))
 
@@ -52,7 +52,7 @@ batch_request = RuntimeBatchRequest(
 # In normal usage you'd set your path directly in the BatchRequest above.
 batch_request.runtime_parameters[
     "path"
-] = "s3a://superconductive-public/data/taxi_yellow_trip_data_samples/yellow_trip_data_sample_2019-01.csv"
+] = "s3://superconductive-docs-test/taxi_yellow_trip_data_samples/yellow_trip_data_sample_2019-01.csv"
 
 context.create_expectation_suite(
     expectation_suite_name="test_suite", overwrite_existing=True
