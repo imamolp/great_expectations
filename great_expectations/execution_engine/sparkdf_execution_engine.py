@@ -223,7 +223,11 @@ Please check your config."""
         elif isinstance(batch_spec, PathBatchSpec):
             reader_method: str = batch_spec.reader_method
             reader_options: dict = batch_spec.reader_options
+            # path can contain?
             path: str = batch_spec.path
+            print("HELLO")
+            print(path)
+            print("HELLO")
             try:
                 reader_options = self.spark.read.options(**reader_options)
                 reader_fn: Callable = self._get_reader_fn(
@@ -232,6 +236,8 @@ Please check your config."""
                     path=path,
                 )
                 batch_data = reader_fn(path)
+                # this contains all 30000?
+                print(batch_data.count())
             except AttributeError:
                 raise ExecutionEngineError(
                     """

@@ -6,6 +6,12 @@ from typing import List
 import pandas as pd
 import pytest
 
+from great_expectations.data_context import BaseDataContext
+from great_expectations.data_context.types.base import (
+    DataContextConfig,
+    InMemoryStoreBackendDefaults,
+)
+
 try:
     pyspark = pytest.importorskip("pyspark")
     from pyspark.sql.types import Row
@@ -939,3 +945,93 @@ def test_spark_with_batch_spec_passthrough(tmp_path_factory, spark_session):
     )
     # check that the batch_spec_passthrough has worked
     assert batch[0].data.dataframe.head() == Row(x="1", y="2")
+
+
+def test_spark_with_directory(tmp_path_factory, spark_session):
+    # NOTE: InMemoryStoreBackendDefaults SHOULD NOT BE USED in normal settings. You
+    # may experience data loss as it persists nothing. It is used here for testing.
+    # Please refer to docs to learn how to instantiate your DataContext.
+    store_backend_defaults = InMemoryStoreBackendDefaults()
+    data_context_config = DataContextConfig(
+        store_backend_defaults=store_backend_defaults,
+        checkpoint_store_name=store_backend_defaults.checkpoint_store_name,
+    )
+    context = BaseDataContext(project_config=data_context_config)
+
+    datasource_yaml = fr"""
+    name: my_filesystem_datasource
+    class_name: Datasource
+    execution_engine:
+        class_name: SparkDFExecutionEngine
+    data_connectors:
+        default_runtime_data_connector_name:
+            class_name: RuntimeDataConnector
+            batch_identifiers:
+                - default_identifier_name
+        default_inferred_data_connector_name:
+            class_name: InferredAssetFilesystemDataConnector
+            base_directory: <YOUR_PATH>
+            batch_spec_passthrough:
+                reader_options:
+                    header: True
+            default_regex:
+                group_names:
+                    - data_asset_name
+                pattern: (yellow_trip_data_sample).*\.csv
+    """
+    datasource_yaml = datasource_yaml.replace(
+        "<YOUR_PATH>", "../test_sets/taxi_yellow_trip_data_samples/subset/"
+    )
+
+    context.test_yaml_config(datasource_yaml)
+    #
+    # context.add_datasource(**yaml.load(datasource_yaml))
+
+    # Here is a BatchRequest naming a data_asset
+    batch_request = BatchRequest(
+        datasource_name="my_filesystem_datasource",
+        data_connector_name="default_inferred_data_connector_name",
+        data_asset_name="yellow_trip_data_sample",
+    )
+
+    context.create_expectation_suite(
+        expectation_suite_name="test_suite", overwrite_existing=True
+    )
+    validator = context.get_validator(
+        batch_request=batch_request, expectation_suite_name="test_suite"
+    )
+
+    print("~~~~")
+    print(validator.__sizeof__())
+
+    # basic_datasource: Datasource = instantiate_class_from_config(
+    #     yaml.load(
+    #         f"""
+    #     class_name: Datasource
+    #
+    #     execution_engine:
+    #         class_name: SparkDFExecutionEngine
+    #         spark_config:
+    #             spark.master: local[*]
+    #             spark.executor.memory: 6g
+    #             spark.driver.memory: 6g
+    #             spark.ui.showConsoleProgress: false
+    #             spark.sql.shuffle.partitions: 2
+    #             spark.default.parallelism: 4
+    #     data_connectors:
+    #         default_runtime_data_connector_name:
+    #             class_name: RuntimeDataConnector
+    #             batch_identifiers:
+    #                 - default_identifier_name
+    #         default_inferred_data_connector_name:
+    #             class_name: InferredAssetFilesystemDataConnector
+    #             base_directory: <YOUR_PATH>
+    #             default_regex:
+    #                 group_names:
+    #                     - data_asset_name
+    #                 pattern: (.*)\.csv
+    #         """,
+    #     ),
+    #     runtime_environment={"name": "my_datasource"},
+    #     config_defaults={"module_name": "great_expectations.datasource"},
+    # )
