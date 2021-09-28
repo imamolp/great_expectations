@@ -118,6 +118,12 @@ try:
 except (ImportError, AttributeError):
     bigquery_types_tuple = None
     pybigquery = None
+    
+try:
+    import teradatasqlalchemy.dialect
+    import teradatasqlalchemy.types as tdtypes
+except ImportError:
+    teradatasqlalchemy = None     
 
 
 def _get_dialect_type_module(dialect):
@@ -147,6 +153,19 @@ def _get_dialect_type_module(dialect):
             return bigquery_types_tuple
     except (TypeError, AttributeError):
         pass
+    
+    # Teradata types module
+    try:
+        if (
+            issubclass(
+                dialect,
+                teradatasqlalchemy.dialect.TeradataDialect,
+            )
+            and tdtypes is not None
+        ):
+            return tdtypes
+    except (TypeError, AttributeError):
+        pass 
 
     return dialect
 

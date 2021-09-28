@@ -141,6 +141,12 @@ try:
     import pyathena.sqlalchemy_athena
 except ImportError:
     pyathena = None
+    
+try:
+    import teradatasqlalchemy.dialect
+    import teradatasqlalchemy.types as tdtypes
+except ImportError:
+    teradatasqlalchemy = None    
 
 
 class SqlAlchemyBatchReference:
@@ -582,6 +588,10 @@ class SqlAlchemyDataset(MetaSqlAlchemyDataset):
             self.dialect = import_library_module(
                 module_name="pyathena.sqlalchemy_athena"
             )
+        elif self.engine.dialect.name.lower() == "teradatasql":
+            self.dialect = import_library_module(
+                module_name="teradatasqlalchemy.dialect"
+            )    
         else:
             self.dialect = None
 
@@ -697,6 +707,12 @@ class SqlAlchemyDataset(MetaSqlAlchemyDataset):
                 head_sql_str = "select * from {table} WHERE ROWNUM <= {n}".format(
                     table=self._table.name, n=n
                 )
+                
+            # Limit is unknown in teradatasql! Use sample instead!
+            if self.engine.dialect.name.lower() == "teradatasql":
+                head_sql_str = "select * from {table} sample {n}".format(
+                    table=self._table.name, n=n
+                )    
 
             df = pd.read_sql(head_sql_str, con=self.engine)
         except StopIteration:
@@ -734,7 +750,8 @@ class SqlAlchemyDataset(MetaSqlAlchemyDataset):
                 sa.func.sum(
                     sa.case(
                         [
-                            (
+                            (   
+                                sa.column(column).is_(None) if self.engine.dialect.name.lower() == "teradatasql" else
                                 sa.or_(
                                     sa.column(column).in_(ignore_values),
                                     # Below is necessary b/c sa.in_() uses `==` but None != None
@@ -748,7 +765,7 @@ class SqlAlchemyDataset(MetaSqlAlchemyDataset):
                         ],
                         else_=0,
                     )
-                ).label("null_count"),
+                ).label("null_count"),  
             ]
         ).select_from(self._table)
         count_results = dict(self.engine.execute(count_query).fetchone())
@@ -1357,6 +1374,10 @@ class SqlAlchemyDataset(MetaSqlAlchemyDataset):
             stmt_2 = "CREATE GLOBAL TEMPORARY TABLE {table_name} ON COMMIT PRESERVE ROWS AS {custom_sql}".format(
                 table_name=table_name, custom_sql=custom_sql
             )
+        elif engine_dialect == "teradatasql":
+            stmt = 'CREATE VOLATILE TABLE "{table_name}" AS ({custom_sql}) WITH DATA NO PRIMARY INDEX ON COMMIT PRESERVE ROWS'.format(
+                table_name=table_name, custom_sql=custom_sql
+            )    
         else:
             stmt = 'CREATE TEMPORARY TABLE "{table_name}" AS {custom_sql}'.format(
                 table_name=table_name, custom_sql=custom_sql
@@ -1599,6 +1620,19 @@ WHERE
                 return bigquery_types_tuple
         except (TypeError, AttributeError):
             pass
+        
+        # Teradata types module
+        try:
+            if (
+                issubclass(
+                    self.sql_engine_dialect.dialect,
+                    teradatasqlalchemy.dialect.TeradataDialect,
+                )
+                and tdtypes is not None
+            ):
+                return tdtypes
+        except (TypeError, AttributeError):
+            pass 
 
         return self.dialect
 
@@ -1982,6 +2016,18 @@ WHERE
             TypeError,
         ):  # TypeError can occur if the driver was not installed and so is None
             pass
+        
+        try:
+            # Teradata
+            if isinstance( self.sql_engine_dialect, teradatasqlalchemy.dialect.TeradataDialect):
+                if positive:
+                    return (sa.func.REGEXP_SIMILAR(sa.column(column), literal(regex), literal('i')) == 1)
+                else:
+                    return (
+                        sa.func.REGEXP_SIMILAR(sa.column(column) , literal(regex), literal('i')) == 0
+                    )      
+        except (AttributeError, TypeError):
+            pass
 
         return None
 
@@ -2131,6 +2177,12 @@ WHERE
             if isinstance(
                 self.sql_engine_dialect, sqlalchemy_redshift.dialect.RedshiftDialect
             ):
+                dialect_supported = True
+        except (AttributeError, TypeError):
+            pass
+        
+        try:
+            if isinstance( self.sql_engine_dialect, teradatasqlalchemy.dialect.TeradataDialect):
                 dialect_supported = True
         except (AttributeError, TypeError):
             pass

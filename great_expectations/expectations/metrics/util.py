@@ -78,6 +78,12 @@ try:
 except ImportError:
     bigquery_types_tuple = None
     pybigquery = None
+    
+try:
+    import teradatasqlalchemy.dialect
+    import teradatasqlalchemy.types as tdtypes
+except ImportError:
+    teradatasqlalchemy = None    
 
 
 def get_dialect_regex_expression(column, regex, dialect, positive=True):
@@ -146,6 +152,16 @@ def get_dialect_regex_expression(column, regex, dialect, positive=True):
             exc_info=True,
         )
         pass
+    
+    try:
+        # Teradata
+        if issubclass(dialect.dialect, teradatasqlalchemy.dialect.TeradataDialect):            
+            if positive:                               
+                return (sa.func.REGEXP_SIMILAR(column , literal(regex), literal('i')) == 1)
+            else:
+                return (sa.func.REGEXP_SIMILAR(column , literal(regex), literal('i')) == 0)      
+    except (AttributeError, TypeError):
+        pass
 
     return None
 
@@ -175,6 +191,19 @@ def _get_dialect_type_module(dialect=None):
             return bigquery_types_tuple
     except (TypeError, AttributeError):
         pass
+    
+    # Teradata types module
+    try:
+        if (
+            issubclass(
+                dialect,
+                teradatasqlalchemy.dialect.TeradataDialect,
+            )
+            and tdtypes is not None
+        ):
+            return tdtypes
+    except (TypeError, AttributeError):
+        pass 
 
     return dialect
 
@@ -335,6 +364,12 @@ def get_dialect_like_pattern_expression(column, dialect, like_pattern, positive=
 
     try:
         if isinstance(dialect, sqlalchemy_redshift.dialect.RedshiftDialect):
+            dialect_supported = True
+    except (AttributeError, TypeError):
+        pass
+    
+    try:
+        if isinstance( self.sql_engine_dialect, teradatasqlalchemy.dialect.TeradataDialect):
             dialect_supported = True
     except (AttributeError, TypeError):
         pass
